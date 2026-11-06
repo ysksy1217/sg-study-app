@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#1e293b">
+  <title>汎用資格学習PWA</title>
+  <link rel="manifest" href="./manifest.json">
+  <style>
+    :root {
+      --bg-main: #f8fafc;
+      --bg-card: #ffffff;
+      --text-main: #0f172a;
+      --text-sub: #475569;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --success: #16a34a;
+      --danger: #dc2626;
+      --warning: #d97706;
+      --border: #e2e8f0;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+    body { background-color: var(--bg-main); color: var(--text-main); display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+    header { background-color: #1e293b; color: #ffffff; padding: 12px 16px; text-align: center; font-size: 1.1rem; font-weight: bold; position: relative; flex-shrink: 0; }
+    header button { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); background: transparent; border: none; color: white; font-size: 1.2rem; cursor: pointer; display: none; }
+    main { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; width: 100%; max-width: 600px; margin: 0 auto; }
+    .screen { width: 100%; display: none; flex-direction: column; gap: 16px; }
+    .screen.active { display: flex; }
+    .btn { background-color: var(--primary); color: white; border: none; padding: 14px 20px; font-size: 1rem; font-weight: bold; border-radius: 8px; cursor: pointer; width: 100%; text-align: center; text-decoration: none; box-shadow: 0 2px 4px rgba(0,0,0,0.1); min-height: 48px; display: flex; align-items: center; justify-content: center; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn:active:not(:disabled) { background-color: var(--primary-hover); transform: translateY(1px); }
+    .btn-secondary { background-color: #64748b; }
+    .btn-outline { background-color: transparent; border: 2px solid var(--primary); color: var(--primary); }
+    .btn-danger { background-color: var(--danger); }
+    .card { background-color: var(--bg-card); border-radius: 12px; padding: 16px; border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.05); width: 100%; }
+    .badge { display: inline-block; padding: 4px 8px; font-size: 0.8rem; font-weight: bold; border-radius: 4px; background: #e2e8f0; color: #334155; }
+    .badge-a { background: #fee2e2; color: #991b1b; }
+    .badge-b { background: #fef3c7; color: #92400e; }
+    .badge-c { background: #e0f2fe; color: #075985; }
+    .choice-btn { background-color: #fff; border: 2px solid var(--border); color: var(--text-main); text-align: left; padding: 14px; font-size: 0.95rem; line-height: 1.4; border-radius: 8px; width: 100%; cursor: pointer; display: flex; gap: 10px; align-items: flex-start; }
+    .choice-btn:active { background-color: #f1f5f9; }
+    .choice-btn.selected-correct { border-color: var(--success); background-color: #f0fdf4; color: #166534; font-weight: bold; }
+    .choice-btn.selected-wrong { border-color: var(--danger); background-color: #fef2f2; color: #991b1b; }
+    .switch-container { display: flex; align-items: center; justify-content: space-between; background: #f1f5f9; padding: 12px; border-radius: 8px; margin-top: 10px; }
+    .switch { position: relative; display: inline-block; width: 50px; height: 26px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .3s; border-radius: 34px; }
+    .slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 3px; bottom: 3px; background-color: white; transition: .3s; border-radius: 50%; }
+    input:checked + .slider { background-color: var(--primary); }
+    input:checked + .slider:before { transform: translateX(24px); }
+    .term-item { display: flex; align-items: center; justify-content: space-between; padding: 12px; border-bottom: 1px solid var(--border); }
+    .term-info { display: flex; flex-direction: column; gap: 4px; max-width: 75%; }
+    .progress-bar { width: 100%; height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; margin-bottom: 8px; }
+    .progress-fill { height: 100%; background: var(--primary); width: 0%; transition: width 0.3s; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <button id="back-btn" onclick="app.goHome()">←</button>
+    <span id="header-title">汎用資格学習PWA</span>
+  </header>
+
+  <main>
+    <!-- 1. ホーム画面 -->
+    <div id="screen-home" class="screen active">
+      <div class="card" style="text-align: center;">
+        <h2 id="ds-title" style="margin-bottom: 8px;">教材データ未登録</h2>
+        <p id="ds-info" style="color: var(--text-sub); font-size: 0.9rem;">JSON教材インポートから学習データを登録してください。</p>
+      </div>
+
+      <button id="start-btn" class="btn" onclick="app.showScreen('screen-count')" disabled>学習を開始する</button>
+      <button class="btn btn-outline" onclick="app.showScreen('screen-terms')">用語・出題管理</button>
+      <button class="btn btn-secondary" onclick="app.showScreen('screen-import')">教材インポート</button>
+      <button class="btn btn-secondary" onclick="app.showScreen('screen-backup')">バックアップ・復元</button>
+    </div>
+
+    <!-- 2. 出題数選択画面 -->
+    <div id="screen-count" class="screen">
+      <div class="card">
+        <h3>出題数を選択してください</h3>
+        <p style="font-size: 0.85rem; color: var(--text-sub); margin-top: 4px;">出題対象用語数: <span id="active-term-count">0</span>件</p>
+      </div>
+      <button class="btn btn-count" data-count="10" onclick="app.startQuiz(10)">10問</button>
+      <button class="btn btn-count" data-count="20" onclick="app.startQuiz(20)">20問</button>
+      <button class="btn btn-count" data-count="50" onclick="app.startQuiz(50)">50問</button>
+      <button class="btn btn-count" data-count="all" onclick="app.startQuiz('all')">全問</button>
+      <button class="btn btn-outline" onclick="app.goHome()">キャンセル</button>
+    </div>
+
+    <!-- 3. 4択問題・解答・解説画面 -->
+    <div id="screen-quiz" class="screen">
+      <div class="progress-bar"><div id="quiz-progress" class="progress-fill"></div></div>
+      <div style="display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--text-sub);">
+        <span id="quiz-counter">問題 1 / 10</span>
+        <span id="quiz-category" class="badge">カテゴリ</span>
+      </div>
+
+      <div class="card">
+        <h3 id="quiz-term" style="color: var(--primary); margin-bottom: 8px;"></h3>
+        <p id="quiz-prompt" style="font-size: 1rem; line-height: 1.5; white-space: pre-wrap;"></p>
+      </div>
+
+      <div id="quiz-choices" style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
+        <!-- 選択肢ボタン群 -->
+      </div>
+
+      <div id="quiz-result-area" class="card" style="display: none; border-left: 5px solid var(--primary);">
+        <h3 id="result-judge" style="margin-bottom: 8px;"></h3>
+        <p><strong>【正解】</strong> <span id="result-correct-text"></span></p>
+        <div style="margin-top: 8px; font-size: 0.9rem; line-height: 1.5; white-space: pre-wrap;" id="result-explanation"></div>
+
+        <div class="switch-container">
+          <span style="font-size: 0.9rem; font-weight: bold;">次回も出題する</span>
+          <label class="switch">
+            <input type="checkbox" id="next-quiz-toggle">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <button class="btn" style="margin-top: 12px;" onclick="app.nextQuestion()">次へ進む</button>
+      </div>
+    </div>
+
+    <!-- 5. 結果画面 -->
+    <div id="screen-result" class="screen">
+      <div class="card" style="text-align: center;">
+        <h2>学習成果</h2>
+        <div style="font-size: 2.5rem; font-weight: bold; color: var(--primary); margin: 12px 0;" id="result-score">0%</div>
+        <p><span id="result-correct">0</span> / <span id="result-total">0</span> 問正解</p>
+      </div>
+
+      <div class="card">
+        <h4 style="margin-bottom: 8px; color: var(--danger);">復習が必要な用語</h4>
+        <div id="wrong-terms-list" style="display: flex; flex-direction: column; gap: 6px; font-size: 0.9rem;">
+          <!-- 間違えた用語 -->
+        </div>
+      </div>
+
+      <button class="btn" onclick="app.goHome()">ホームに戻る</button>
+    </div>
+
+    <!-- 6. 用語管理画面 -->
+    <div id="screen-terms" class="screen">
+      <div class="card">
+        <h3>用語・出題ON/OFF管理</h3>
+        <p style="font-size: 0.85rem; color: var(--text-sub);">個別の用語の出題対象を設定できます。</p>
+      </div>
+      <div id="terms-list-container" class="card" style="padding: 0; max-height: 60vh; overflow-y: auto;">
+        <!-- 用語リスト -->
+      </div>
+    </div>
+
+    <!-- 7. 教材インポート画面 -->
+    <div id="screen-import" class="screen">
+      <div class="card">
+        <h3>教材JSONの選択</h3>
+        <p style="font-size: 0.85rem; color: var(--text-sub); margin-bottom: 12px;">端末から教材データ(JSON)を選択します。</p>
+        <input type="file" id="import-file-input" accept=".json" style="width: 100%;">
+      </div>
+
+      <div id="import-preview" class="card" style="display: none;">
+        <h4>インポート内容の確認</h4>
+        <p style="margin-top: 8px;"><strong>教材名:</strong> <span id="prev-name"></span></p>
+        <p><strong>試験:</strong> <span id="prev-exam"></span></p>
+        <p><strong>用語数:</strong> <span id="prev-terms"></span></p>
+        <p><strong>問題数:</strong> <span id="prev-questions"></span></p>
+        <button class="btn" style="margin-top: 12px;" onclick="app.confirmImport()">インポートを実行</button>
+      </div>
+    </div>
+
+    <!-- 8. バックアップ・復元画面 -->
+    <div id="screen-backup" class="screen">
+      <div class="card">
+        <h3>エクスポート（バックアップ）</h3>
+        <p style="font-size: 0.85rem; color: var(--text-sub); margin-bottom: 12px;">教材データと学習履歴・出題設定をひとつのJSONファイルとして出力します。</p>
+        <button class="btn" onclick="app.exportBackup()">バックアップJSONをダウンロード</button>
+      </div>
+
+      <div class="card">
+        <h3>インポート（復元）</h3>
+        <p style="font-size: 0.85rem; color: var(--text-sub); margin-bottom: 12px;">バックアップJSONを読み込んでアプリの状態を復元します。</p>
+        <input type="file" id="restore-file-input" accept=".json" style="width: 100%; margin-bottom: 12px;">
+        <button class="btn btn-secondary" onclick="app.restoreBackup()">復元を実行</button>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    // --- Safe DOM Helper ---
+    function setText(id, text) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = text !== undefined && text !== null ? text : '';
+    }
+
+    // --- Fisher-Yates Shuffle ---
+    function shuffleArray(array) {
+      const arr = [...array];
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    }
+
+    // --- IndexedDB Manager ---
+    class DBManager {
+      constructor() {
+        this.dbName = 'GenCertDB';
+        this.version = 1;
+        this.db = null;
+      }
+      async init() {
+        return new Promise((resolve, reject) => {
+          const req = indexedDB.open(this.dbName, this.version);
+          req.onupgradeneeded = (e) => {
+            const db = e.target.result;
+            if (!db.objectStoreNames.contains('dataset')) db.createObjectStore('dataset', { keyPath: 'id' });
+            if (!db.objectStoreNames.contains('termState')) db.createObjectStore('termState', { keyPath: 'term_id' });
+            if (!db.objectStoreNames.contains('history')) db.createObjectStore('history', { keyPath: 'id', autoIncrement: true });
+          };
+          req.onsuccess = (e) => { this.db = e.target.result; resolve(); };
+          req.onerror = (e) => reject(e.target.error);
+        });
+      }
+
+      // トランザクション完了を保証する共通ヘルパー（同期例外発生時に確実にabortを実行）
+      runTransaction(storeNames, mode, action) {
+        return new Promise((resolve, reject) => {
+          const tx = this.db.transaction(storeNames, mode);
+          let actionResult = null;
+          tx.oncomplete = () => resolve(actionResult);
+          tx.onerror = () => reject(tx.error || new Error('Transaction failed'));
+          tx.onabort = () => reject(tx.error || new Error('Transaction aborted'));
+          try {
+            actionResult = action(tx);
+          } catch (err) {
+            try {
+              tx.abort();
+            } catch (abortErr) {
+              // すでに完了・失敗している場合は無視
+            }
+            reject(err);
+          }
+        });
+      }
+
+      async saveImportDatasetAndStates(dataset, newTermStates) {
+        return this.runTransaction(['dataset', 'termState'], 'readwrite', (tx) => {
+          const dsStore = tx.objectStore('dataset');
+          const tsStore = tx.objectStore('termState');
+          
+          dsStore.put({ id: 'current', data: dataset });
+          
+          // 古い用語IDも含めてストアをクリアし、新しく構成されたnewTermStatesのみを保存
+          tsStore.clear();
+          for (const term_id in newTermStates) {
+            tsStore.put({ term_id, active: newTermStates[term_id] });
+          }
+        });
+      }
+
+      async setDataset(dataset) {
+        return this.runTransaction(['dataset'], 'readwrite', (tx) => {
+          tx.objectStore('dataset').put({ id: 'current', data: dataset });
+        });
+      }
+
+      async getDataset() {
+        return new Promise((resolve, reject) => {
+          const tx = this.db.transaction(['dataset'], 'readonly');
+          const req = tx.objectStore('dataset').get('current');
+          req.onsuccess = () => resolve(req.result ? req.result.data : null);
+          req.onerror = () => reject(req.error);
+        });
+      }
+
+      async setTermStates(states) {
+        return this.runTransaction(['termState'], 'readwrite', (tx) => {
+          const store = tx.objectStore('termState');
+          for (const term_id in states) {
+            store.put({ term_id, active: states[term_id] });
+          }
+        });
+      }
+
+      async getTermStates() {
+        return new Promise((resolve, reject) => {
+          const tx = this.db.transaction(['termState'], 'readonly');
+          const req = tx.objectStore('termState').getAll();
+          req.onsuccess = () => {
+            const map = {};
+            (req.result || []).forEach(item => map[item.term_id] = item.active);
+            resolve(map);
+          };
+          req.onerror = () => reject(req.error);
+        });
+      }
+
+      async addHistory(record) {
+        return this.runTransaction(['history'], 'readwrite', (tx) => {
+          tx.objectStore('history').add(record);
+        });
+      }
+
+      async getHistory() {
+        return new Promise((resolve, reject) => {
+          const tx = this.db.transaction(['history'], 'readonly');
+          const req = tx.objectStore('history').getAll();
+          req.onsuccess = () => resolve(req.result || []);
+          req.onerror = () => reject(req.error);
+        });
+      }
+
+      async restoreAllData(dataset, termStates, historyArray) {
+        return this.runTransaction(['dataset', 'termState', 'history'], 'readwrite', (tx) => {
+          const dsStore = tx.objectStore('dataset');
+          const tsStore = tx.objectStore('termState');
+          const hStore = tx.objectStore('history');
+
+          dsStore.put({ id: 'current', data: dataset });
+          
+          tsStore.clear();
+          for (const term_id in termStates) {
+            tsStore.put({ term_id, active: termStates[term_id] });
+          }
+
+          hStore.clear();
+          if (Array.isArray(historyArray)) {
+            for (const h of historyArray) {
+              const item = { ...h };
+              delete item.id; // autoIncrement用にid削除
+              hStore.add(item);
+            }
+          }
+        });
+      }
+    }
+
+    // --- Core Application Logic ---
+    class App {
+      constructor() {
+        this.db = new DBManager();
+        this.dataset = null;
+        this.termStates = {}; // term_id -> boolean
+        this.pendingDataset = null;
+        this.quizList = [];
+        this.quizIndex = 0;
+        this.quizResults = [];
+        this.isAdvancing = false; // 次へボタンの連続操作を防止
+      }
+
+      async init() {
+        try {
+          await this.db.init();
+          this.dataset = await this.db.getDataset();
+          this.termStates = await this.db.getTermStates();
+        } catch (err) {
+          console.error('Database initialization error:', err);
+          alert('データベースの初期化に失敗しました。');
+        }
+        this.updateHomeUI();
+
+        // ServiceWorker Registration
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.register('./service-worker.js').catch(err => console.warn('SW reg failed', err));
+        }
+
+        document.getElementById('import-file-input').addEventListener('change', (e) => this.handleFileSelect(e));
+      }
+
+      showScreen(screenId) {
+        document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
+        document.getElementById(screenId).classList.add('active');
+        document.getElementById('back-btn').style.display = screenId === 'screen-home' ? 'none' : 'block';
+
+        if (screenId === 'screen-count') this.updateCountScreen();
+        if (screenId === 'screen-terms') this.renderTermsScreen();
+      }
+
+      goHome() {
+        this.updateHomeUI();
+        this.showScreen('screen-home');
+      }
+
+      updateHomeUI() {
+        const startBtn = document.getElementById('start-btn');
+
+        if (this.dataset) {
+          setText('ds-title', this.dataset.dataset_name || '無題の教材');
+          const activeCount = this.dataset.terms.filter(t =>
+            this.termStates[t.id] !== false &&
+            Array.isArray(t.questions) && t.questions.length > 0
+          ).length;
+          setText('ds-info', `試験: ${this.dataset.exam || '-'} | 用語数: ${this.dataset.terms.length} (出題可能: ${activeCount})`);
+          startBtn.disabled = activeCount === 0;
+        } else {
+          setText('ds-title', '教材データ未登録');
+          setText('ds-info', 'JSON教材インポートから学習データを登録してください。');
+          startBtn.disabled = true;
+        }
+      }
+
+      updateCountScreen() {
+        if (!this.dataset) return;
+        const activeTerms = this.dataset.terms.filter(t => this.termStates[t.id] !== false && t.questions && t.questions.length > 0);
+        const count = activeTerms.length;
+        setText('active-term-count', String(count));
+
+        document.querySelectorAll('.btn-count').forEach(btn => {
+          const val = btn.getAttribute('data-count');
+          if (val === 'all') {
+            btn.disabled = count === 0;
+          } else {
+            btn.disabled = parseInt(val, 10) > count || count === 0;
+          }
+        });
+      }
+
+      // --- JSON Import & Validation ---
+      handleFileSelect(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+          try {
+            const data = JSON.parse(evt.target.result);
+            const validation = this.validateDataset(data);
+            if (!validation.valid) {
+              alert(`不正な教材データ構造です:
+${validation.reason}`);
+              document.getElementById('import-file-input').value = '';
+              return;
+            }
+            this.pendingDataset = data;
+            setText('prev-name', data.dataset_name);
+            setText('prev-exam', data.exam || '-');
+            setText('prev-terms', String(data.terms.length));
+            
+            let qCount = 0;
+            data.terms.forEach(t => { if (t.questions) qCount += t.questions.length; });
+            setText('prev-questions', String(qCount));
+
+            document.getElementById('import-preview').style.display = 'block';
+          } catch (err) {
+            alert('JSONファイルの読み込みまたはパースに失敗しました。');
+            document.getElementById('import-file-input').value = '';
+          }
+        };
+        reader.readAsText(file);
+      }
+
+      validateDataset(data) {
+        if (!data || typeof data !== 'object') return { valid: false, reason: 'オブジェクトではありません。' };
+        if (typeof data.schema_version !== 'string' && typeof data.schema_version !== 'number') return { valid: false, reason: 'schema_version が不正です。' };
+        if (!data.dataset_id || typeof data.dataset_id !== 'string') return { valid: false, reason: 'dataset_id が不正です。' };
+        if (!data.dataset_name || typeof data.dataset_name !== 'string') return { valid: false, reason: 'dataset_name が不正です。' };
+        if (!Array.isArray(data.terms)) return { valid: false, reason: 'terms 配列が存在しません。' };
+
+        const termIds = new Set();
+        for (let i = 0; i < data.terms.length; i++) {
+          const t = data.terms[i];
+          if (!t || typeof t !== 'object') return { valid: false, reason: `terms[${i}] がオブジェクトではありません。` };
+          if (!t.id || typeof t.id !== 'string') return { valid: false, reason: `terms[${i}] の id が不正です。` };
+          if (termIds.has(t.id)) return { valid: false, reason: `用語ID "${t.id}" が重複しています。` };
+          termIds.add(t.id);
+
+          if (!t.term || typeof t.term !== 'string') return { valid: false, reason: `terms[${i}] (${t.id}) の term 名が不正です。` };
+          if (!Array.isArray(t.questions)) return { valid: false, reason: `terms[${i}] (${t.id}) の questions 配列が不正です。` };
+
+          for (let j = 0; j < t.questions.length; j++) {
+            const q = t.questions[j];
+            if (!q || typeof q !== 'object') return { valid: false, reason: `terms[${i}].questions[${j}] がオブジェクトではありません。` };
+            if (!q.id || typeof q.id !== 'string') return { valid: false, reason: `問題IDが不正です (${t.id})。` };
+            if (!q.prompt || typeof q.prompt !== 'string') return { valid: false, reason: `問題文(prompt)が不正です (${q.id})。` };
+            if (!Array.isArray(q.choices) || q.choices.length !== 4) return { valid: false, reason: `選択肢(choices)は4つ必要です (${q.id})。` };
+
+            const choiceIds = new Set();
+            for (const c of q.choices) {
+              if (!c || typeof c !== 'object' || c.id === undefined || typeof c.text !== 'string') {
+                return { valid: false, reason: `選択肢の構造が不正です (${q.id})。` };
+              }
+              choiceIds.add(c.id);
+            }
+            if (choiceIds.size !== 4) return { valid: false, reason: `選択肢IDに重複があります (${q.id})。` };
+            if (q.correct_choice_id === undefined || !choiceIds.has(q.correct_choice_id)) {
+              return { valid: false, reason: `correct_choice_id が選択肢内に存在しません (${q.id})。` };
+            }
+          }
+        }
+        return { valid: true };
+      }
+
+      async confirmImport() {
+        if (!this.pendingDataset) return;
+        
+        // 現在の教材に存在する用語IDのみ抽出し、新教材の用語状態マップを構築（古い用語IDを排除）
+        const newStates = {};
+        this.pendingDataset.terms.forEach(t => {
+          if (this.termStates[t.id] !== undefined) {
+            newStates[t.id] = this.termStates[t.id]; // 既存用語の状態維持
+          } else {
+            newStates[t.id] = true; // 新規用語はON
+          }
+        });
+
+        try {
+          await this.db.saveImportDatasetAndStates(this.pendingDataset, newStates);
+          this.dataset = this.pendingDataset;
+          this.termStates = newStates;
+          this.pendingDataset = null;
+
+          alert('教材インポートが完了しました。');
+          document.getElementById('import-preview').style.display = 'none';
+          document.getElementById('import-file-input').value = '';
+          this.goHome();
+        } catch (err) {
+          console.error('Import failed:', err);
+          alert('インポート保存処理に失敗しました。既存データは保持されています。');
+        }
+      }
+
+      // --- Quiz Engine ---
+      startQuiz(countArg) {
+        const activeTerms = this.dataset.terms.filter(t => this.termStates[t.id] !== false && t.questions && t.questions.length > 0);
+        let targetCount = countArg === 'all' ? activeTerms.length : parseInt(countArg, 10);
+        targetCount = Math.min(targetCount, activeTerms.length);
+
+        // Fisher-Yates アルゴリズムで出題用語をシャッフル
+        const shuffledTerms = shuffleArray(activeTerms).slice(0, targetCount);
+
+        this.quizList = shuffledTerms.map(term => {
+          // 用語内の問題から1問をランダム選択
+          const q = term.questions[Math.floor(Math.random() * term.questions.length)];
+          // Fisher-Yates アルゴリズムで選択肢をシャッフル
+          const shuffledChoices = shuffleArray(q.choices);
+          return {
+            term: term,
+            question: q,
+            choices: shuffledChoices
+          };
+        });
+
+        this.quizIndex = 0;
+        this.quizResults = [];
+        this.showScreen('screen-quiz');
+        this.renderQuestion();
+      }
+
+      renderQuestion() {
+        const item = this.quizList[this.quizIndex];
+        const total = this.quizList.length;
+
+        setText('quiz-counter', `問題 ${this.quizIndex + 1} / ${total}`);
+        document.getElementById('quiz-progress').style.width = `${((this.quizIndex) / total) * 100}%`;
+        
+        const catEl = document.getElementById('quiz-category');
+        catEl.textContent = item.term.category || '全般';
+        catEl.className = `badge badge-${(item.term.priority || 'C').toLowerCase()}`;
+
+        setText('quiz-term', item.term.term);
+        setText('quiz-prompt', item.question.prompt);
+
+        const choicesArea = document.getElementById('quiz-choices');
+        choicesArea.innerHTML = '';
+
+        document.getElementById('quiz-result-area').style.display = 'none';
+
+        const labels = ['A', 'B', 'C', 'D'];
+        item.choices.forEach((choice, idx) => {
+          const btn = document.createElement('button');
+          btn.className = 'choice-btn';
+          
+          const strong = document.createElement('strong');
+          strong.style.minWidth = '20px';
+          strong.textContent = `${labels[idx]}.`;
+          
+          const span = document.createElement('span');
+          span.textContent = choice.text;
+
+          btn.appendChild(strong);
+          btn.appendChild(span);
+
+          btn.onclick = () => this.answerQuestion(choice.id);
+          choicesArea.appendChild(btn);
+        });
+      }
+
+      answerQuestion(selectedId) {
+        const item = this.quizList[this.quizIndex];
+        const isCorrect = selectedId === item.question.correct_choice_id;
+        
+        const choicesArea = document.getElementById('quiz-choices');
+        const btns = choicesArea.querySelectorAll('.choice-btn');
+
+        btns.forEach((btn, idx) => {
+          btn.onclick = null;
+          const c = item.choices[idx];
+          if (c.id === item.question.correct_choice_id) {
+            btn.classList.add('selected-correct');
+          } else if (c.id === selectedId && !isCorrect) {
+            btn.classList.add('selected-wrong');
+          }
+        });
+
+        const correctObj = item.choices.find(c => c.id === item.question.correct_choice_id);
+        
+        setText('result-judge', isCorrect ? '正解！' : '不正解…');
+        document.getElementById('result-judge').style.color = isCorrect ? 'var(--success)' : 'var(--danger)';
+        setText('result-correct-text', correctObj ? correctObj.text : '');
+        setText('result-explanation', item.question.explanation || '解説なし');
+
+        const toggle = document.getElementById('next-quiz-toggle');
+        toggle.checked = false; // 初期状態OFF
+
+        document.getElementById('quiz-result-area').style.display = 'block';
+
+        this.quizResults.push({
+          term_id: item.term.id,
+          term_name: item.term.term,
+          isCorrect: isCorrect,
+          toggleElement: toggle
+        });
+      }
+
+      async nextQuestion() {
+        // 連続タップによる問題のスキップや二重処理を防止
+        if (this.isAdvancing) return;
+        this.isAdvancing = true;
+        const nextButton = document.querySelector('#quiz-result-area button');
+        if (nextButton) nextButton.disabled = true;
+
+        try {
+          const lastResult = this.quizResults[this.quizResults.length - 1];
+          if (!lastResult) return;
+
+          if (lastResult.isCorrect) {
+            if (!lastResult.toggleElement.checked) {
+              this.termStates[lastResult.term_id] = false;
+            } else {
+              this.termStates[lastResult.term_id] = true;
+            }
+          } else {
+            this.termStates[lastResult.term_id] = true;
+          }
+
+          try {
+            await this.db.setTermStates(this.termStates);
+          } catch (err) {
+            console.error('Failed to update term state:', err);
+          }
+
+          this.quizIndex++;
+          if (this.quizIndex < this.quizList.length) {
+            this.renderQuestion();
+          } else {
+            await this.finishQuiz();
+          }
+        } finally {
+          this.isAdvancing = false;
+          if (nextButton && nextButton.isConnected) nextButton.disabled = false;
+        }
+      }
+
+      async finishQuiz() {
+        const total = this.quizResults.length;
+        const correctCount = this.quizResults.filter(r => r.isCorrect).length;
+        const wrongItems = this.quizResults.filter(r => !r.isCorrect);
+        const rate = Math.round((correctCount / total) * 100) || 0;
+
+        setText('result-score', `${rate}%`);
+        setText('result-correct', String(correctCount));
+        setText('result-total', String(total));
+
+        const wrongListEl = document.getElementById('wrong-terms-list');
+        wrongListEl.innerHTML = '';
+        if (wrongItems.length === 0) {
+          const p = document.createElement('p');
+          p.style.color = 'var(--success)';
+          p.textContent = '全問正解です！素晴らしい！';
+          wrongListEl.appendChild(p);
+        } else {
+          wrongItems.forEach(w => {
+            const div = document.createElement('div');
+            div.textContent = `• ${w.term_name}`;
+            wrongListEl.appendChild(div);
+          });
+        }
+
+        try {
+          await this.db.addHistory({
+            date: new Date().toISOString(),
+            total,
+            correct: correctCount,
+            rate
+          });
+        } catch (err) {
+          console.error('Failed to save history:', err);
+        }
+
+        this.showScreen('screen-result');
+      }
+
+      // --- Term Management Screen ---
+      renderTermsScreen() {
+        const container = document.getElementById('terms-list-container');
+        container.innerHTML = '';
+
+        if (!this.dataset || !this.dataset.terms) {
+          const div = document.createElement('div');
+          div.style.padding = '16px';
+          div.textContent = 'データが存在しません';
+          container.appendChild(div);
+          return;
+        }
+
+        this.dataset.terms.forEach(term => {
+          const item = document.createElement('div');
+          item.className = 'term-item';
+          const isOn = this.termStates[term.id] !== false;
+
+          const infoDiv = document.createElement('div');
+          infoDiv.className = 'term-info';
+
+          const strong = document.createElement('strong');
+          strong.textContent = term.term;
+
+          const span = document.createElement('span');
+          span.style.fontSize = '0.75rem';
+          span.style.color = 'var(--text-sub)';
+          span.textContent = term.category || '全般';
+
+          infoDiv.appendChild(strong);
+          infoDiv.appendChild(span);
+
+          const label = document.createElement('label');
+          label.className = 'switch';
+
+          const input = document.createElement('input');
+          input.type = 'checkbox';
+          input.checked = isOn;
+
+          const slider = document.createElement('span');
+          slider.className = 'slider';
+
+          label.appendChild(input);
+          label.appendChild(slider);
+
+          item.appendChild(infoDiv);
+          item.appendChild(label);
+
+          input.addEventListener('change', async (e) => {
+            this.termStates[term.id] = e.target.checked;
+            try {
+              await this.db.setTermStates(this.termStates);
+            } catch (err) {
+              console.error('Failed to update state:', err);
+              alert('状態の保存に失敗しました。');
+            }
+          });
+
+          container.appendChild(item);
+        });
+      }
+
+      // --- Backup & Restore ---
+      async exportBackup() {
+        try {
+          const history = await this.db.getHistory();
+          const backupData = {
+            type: 'app_backup',
+            version: 1,
+            exported_at: new Date().toISOString(),
+            dataset: this.dataset,
+            termStates: this.termStates,
+            history: history
+          };
+
+          const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `gencert_backup_${new Date().toISOString().slice(0,10)}.json`;
+          a.click();
+          URL.revokeObjectURL(url);
+        } catch (err) {
+          alert('バックアップの生成に失敗しました。');
+        }
+      }
+
+      restoreBackup() {
+        const input = document.getElementById('restore-file-input');
+        const file = input.files[0];
+        if (!file) {
+          alert('復元用のバックアップJSONファイルを選択してください。');
+          return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = async (evt) => {
+          try {
+            const data = JSON.parse(evt.target.result);
+            if (!data || typeof data !== 'object' || data.type !== 'app_backup') {
+              alert('無効なバックアップ形式です。');
+              return;
+            }
+            
+            // 教材データの厳格な構造検証
+            const validation = this.validateDataset(data.dataset);
+            if (!validation.valid) {
+              alert(`バックアップ内の教材データが不正です:
+${validation.reason}`);
+              return;
+            }
+
+            // termStates の形式・値・用語IDを検証
+            if (
+              typeof data.termStates !== 'object' ||
+              data.termStates === null ||
+              Array.isArray(data.termStates)
+            ) {
+              alert('バックアップ内の用語状態データが不正です。');
+              return;
+            }
+            const datasetTermIds = new Set(data.dataset.terms.map(term => term.id));
+            for (const key of Object.keys(data.termStates)) {
+              if (!datasetTermIds.has(key)) {
+                alert(`バックアップ内の用語状態データに教材に存在しない用語ID (id: "${key}") が含まれています。`);
+                return;
+              }
+              if (typeof data.termStates[key] !== 'boolean') {
+                alert(`バックアップ内の用語状態データ (id: "${key}") が boolean ではありません。`);
+                return;
+              }
+            }
+
+            // history 配列および各履歴レコードの構造・数値範囲を検証
+            if (!Array.isArray(data.history)) {
+              alert('バックアップ内の学習履歴(history)が配列ではありません。');
+              return;
+            }
+            for (let i = 0; i < data.history.length; i++) {
+              const h = data.history[i];
+              if (!h || typeof h !== 'object' || Array.isArray(h)) {
+                alert(`学習履歴[${i}] がオブジェクトではありません。`);
+                return;
+              }
+              if (
+                typeof h.date !== 'string' || Number.isNaN(Date.parse(h.date)) ||
+                !Number.isInteger(h.total) || h.total < 1 ||
+                !Number.isInteger(h.correct) || h.correct < 0 || h.correct > h.total ||
+                !Number.isInteger(h.rate) || h.rate < 0 || h.rate > 100 ||
+                h.rate !== Math.round((h.correct / h.total) * 100)
+              ) {
+                alert(`学習履歴[${i}] の日付・問題数・正解数・正答率が不正です。`);
+                return;
+              }
+            }
+
+            if (!confirm('既存のデータがバックアップデータで完全上書きされます。よろしいですか？')) {
+              return;
+            }
+
+            // アトミックなDB一括復元（失敗時はロールバック）
+            await this.db.restoreAllData(data.dataset, data.termStates, data.history);
+            
+            this.dataset = data.dataset;
+            this.termStates = data.termStates;
+
+            alert('復元が正常に完了しました。');
+            input.value = '';
+            this.goHome();
+          } catch (err) {
+            console.error('Restore error:', err);
+            alert('復元処理に失敗しました。既存データは保護されています。');
+          }
+        };
+        reader.readAsText(file);
+      }
+    }
+
+    const app = new App();
+    window.addEventListener('DOMContentLoaded', () => app.init());
+  </script>
+</body>
+</html>
