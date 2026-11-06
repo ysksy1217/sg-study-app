@@ -50,6 +50,15 @@
     input:checked + .slider:before { transform: translateX(24px); }
     .term-item { display: flex; align-items: center; justify-content: space-between; padding: 12px; border-bottom: 1px solid var(--border); }
     .term-info { display: flex; flex-direction: column; gap: 4px; max-width: 75%; }
+    .category-group { border-bottom: 1px solid var(--border); }
+    .category-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 15px 16px; cursor: pointer; list-style: none; background: #f8fafc; font-weight: bold; }
+    .category-summary::-webkit-details-marker { display: none; }
+    .category-summary::after { content: "＋"; color: var(--primary); font-size: 1.1rem; margin-left: 4px; }
+    .category-group[open] > .category-summary::after { content: "－"; }
+    .category-title { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+    .category-count { color: var(--text-sub); font-size: 0.8rem; font-weight: normal; white-space: nowrap; }
+    .category-terms { padding-left: 8px; }
+    .category-terms .term-item:last-child { border-bottom: none; }
     .progress-bar { width: 100%; height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; margin-bottom: 8px; }
     .progress-fill { height: 100%; background: var(--primary); width: 0%; transition: width 0.3s; }
   </style>
@@ -97,7 +106,7 @@
       </div>
 
       <div class="card">
-        <h3 id="quiz-term" style="color: var(--primary); margin-bottom: 8px;"></h3>
+        <h3 id="quiz-term" style="color: var(--primary); margin-bottom: 8px; display: none;"></h3>
         <p id="quiz-prompt" style="font-size: 1rem; line-height: 1.5; white-space: pre-wrap;"></p>
       </div>
 
@@ -558,7 +567,9 @@ ${validation.reason}`);
         catEl.textContent = item.term.category || '全般';
         catEl.className = `badge badge-${(item.term.priority || 'C').toLowerCase()}`;
 
-        setText('quiz-term', item.term.term);
+        // 解答前は用語名を隠し、問題文だけを表示する
+        setText('quiz-term', '');
+        document.getElementById('quiz-term').style.display = 'none';
         setText('quiz-prompt', item.question.prompt);
 
         const choicesArea = document.getElementById('quiz-choices');
@@ -605,13 +616,17 @@ ${validation.reason}`);
 
         const correctObj = item.choices.find(c => c.id === item.question.correct_choice_id);
         
+        // 解答後に初めて対象用語名を表示する
+        setText('quiz-term', item.term.term);
+        document.getElementById('quiz-term').style.display = 'block';
+
         setText('result-judge', isCorrect ? '正解！' : '不正解…');
         document.getElementById('result-judge').style.color = isCorrect ? 'var(--success)' : 'var(--danger)';
         setText('result-correct-text', correctObj ? correctObj.text : '');
         setText('result-explanation', item.question.explanation || '解説なし');
 
         const toggle = document.getElementById('next-quiz-toggle');
-        toggle.checked = false; // 初期状態OFF
+        toggle.checked = this.termStates[item.term.id] !== false; // 初期状態ON。現在の設定も引き継ぐ
 
         document.getElementById('quiz-result-area').style.display = 'block';
 
@@ -634,15 +649,9 @@ ${validation.reason}`);
           const lastResult = this.quizResults[this.quizResults.length - 1];
           if (!lastResult) return;
 
-          if (lastResult.isCorrect) {
-            if (!lastResult.toggleElement.checked) {
-              this.termStates[lastResult.term_id] = false;
-            } else {
-              this.termStates[lastResult.term_id] = true;
-            }
-          } else {
-            this.termStates[lastResult.term_id] = true;
-          }
+          // 正誤に関係なく、スイッチの状態をそのまま保存する
+          // 正解しても自動OFFにはせず、ユーザーが手動で管理する
+          this.termStates[lastResult.term_id] = lastResult.toggleElement.checked;
 
           try {
             await this.db.setTermStates(this.termStates);
@@ -706,7 +715,7 @@ ${validation.reason}`);
         const container = document.getElementById('terms-list-container');
         container.innerHTML = '';
 
-        if (!this.dataset || !this.dataset.terms) {
+        if (!this.dataset || !Array.isArray(this.dataset.terms) || this.dataset.terms.length === 0) {
           const div = document.createElement('div');
           div.style.padding = '16px';
           div.textContent = 'データが存在しません';
@@ -714,52 +723,91 @@ ${validation.reason}`);
           return;
         }
 
+        // JSON内のcategoryを使って自動分類（資格や教材ごとの固定カテゴリにはしない）
+        const grouped = new Map();
         this.dataset.terms.forEach(term => {
-          const item = document.createElement('div');
-          item.className = 'term-item';
-          const isOn = this.termStates[term.id] !== false;
+          const category = (typeof term.category === 'string' && term.category.trim())
+            ? term.category.trim()
+            : '全般';
+          if (!grouped.has(category)) grouped.set(category, []);
+          grouped.get(category).push(term);
+        });
 
-          const infoDiv = document.createElement('div');
-          infoDiv.className = 'term-info';
+        grouped.forEach((terms, category) => {
+          const details = document.createElement('details');
+          details.className = 'category-group';
 
-          const strong = document.createElement('strong');
-          strong.textContent = term.term;
+          const summary = document.createElement('summary');
+          summary.className = 'category-summary';
 
-          const span = document.createElement('span');
-          span.style.fontSize = '0.75rem';
-          span.style.color = 'var(--text-sub)';
-          span.textContent = term.category || '全般';
+          const title = document.createElement('span');
+          title.className = 'category-title';
+          title.textContent = category;
 
-          infoDiv.appendChild(strong);
-          infoDiv.appendChild(span);
+          const count = document.createElement('span');
+          count.className = 'category-count';
 
-          const label = document.createElement('label');
-          label.className = 'switch';
+          const activeCount = terms.filter(term => this.termStates[term.id] !== false).length;
+          count.textContent = `${terms.length}件中 ${activeCount}件 ON`;
+          count.dataset.categoryCount = 'true';
 
-          const input = document.createElement('input');
-          input.type = 'checkbox';
-          input.checked = isOn;
+          summary.appendChild(title);
+          summary.appendChild(count);
+          details.appendChild(summary);
 
-          const slider = document.createElement('span');
-          slider.className = 'slider';
+          const list = document.createElement('div');
+          list.className = 'category-terms';
 
-          label.appendChild(input);
-          label.appendChild(slider);
+          terms.forEach(term => {
+            const item = document.createElement('div');
+            item.className = 'term-item';
 
-          item.appendChild(infoDiv);
-          item.appendChild(label);
+            const infoDiv = document.createElement('div');
+            infoDiv.className = 'term-info';
 
-          input.addEventListener('change', async (e) => {
-            this.termStates[term.id] = e.target.checked;
-            try {
-              await this.db.setTermStates(this.termStates);
-            } catch (err) {
-              console.error('Failed to update state:', err);
-              alert('状態の保存に失敗しました。');
-            }
+            const strong = document.createElement('strong');
+            strong.textContent = term.term;
+            infoDiv.appendChild(strong);
+
+            const label = document.createElement('label');
+            label.className = 'switch';
+
+            const input = document.createElement('input');
+            input.type = 'checkbox';
+            input.checked = this.termStates[term.id] !== false;
+            input.setAttribute('aria-label', `${term.term}の出題設定`);
+
+            const slider = document.createElement('span');
+            slider.className = 'slider';
+
+            label.appendChild(input);
+            label.appendChild(slider);
+            item.appendChild(infoDiv);
+            item.appendChild(label);
+            list.appendChild(item);
+
+            input.addEventListener('change', async (e) => {
+              const previousValue = this.termStates[term.id] !== false;
+              this.termStates[term.id] = e.target.checked;
+
+              const currentActiveCount = terms.filter(t => this.termStates[t.id] !== false).length;
+              count.textContent = `${terms.length}件中 ${currentActiveCount}件 ON`;
+
+              try {
+                await this.db.setTermStates(this.termStates);
+              } catch (err) {
+                console.error('Failed to update state:', err);
+                this.termStates[term.id] = previousValue;
+                e.target.checked = previousValue;
+                const restoredCount = terms.filter(t => this.termStates[t.id] !== false).length;
+                count.textContent = `${terms.length}件中 ${restoredCount}件 ON`;
+                alert('状態の保存に失敗しました。');
+              }
+            });
           });
 
-          container.appendChild(item);
+          details.appendChild(list);
+          container.appendChild(details);
         });
       }
 
