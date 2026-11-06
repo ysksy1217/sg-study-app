@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gencert-pwa-v4';
+const CACHE_NAME = 'gencert-pwa-v5';
 
 const ASSETS_TO_CACHE = [
   './',
@@ -17,7 +17,7 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// 自アプリの古いキャッシュだけを削除
+// 古いキャッシュを削除
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
@@ -40,7 +40,6 @@ self.addEventListener('fetch', (event) => {
   const request = event.request;
   const url = new URL(request.url);
 
-  // GET以外・外部サイトへの通信は対象外
   if (
     request.method !== 'GET' ||
     url.origin !== self.location.origin
@@ -48,25 +47,28 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 自アプリ専用キャッシュを使用
   const cachePromise = caches.open(CACHE_NAME);
 
-  // HTML画面：キャッシュ優先
+  // HTML画面：ネット優先、失敗したらキャッシュ
   if (request.mode === 'navigate') {
     event.respondWith(
-      cachePromise.then((cache) =>
-        cache.match(request).then((cachedResponse) => {
-          if (cachedResponse) {
-            return cachedResponse;
+      fetch(request)
+        .then((response) => {
+          if (response.ok) {
+            const copy = response.clone();
+            cachePromise.then((cache) =>
+              cache.put(request, copy)
+            );
           }
-
-          return fetch(request).catch(() =>
-            cache.match('./index.html').then((fallback) =>
-              fallback || cache.match('./')
-            )
-          );
+          return response;
         })
-      )
+        .catch(() =>
+          cachePromise.then((cache) =>
+            cache.match(request).then((cached) =>
+              cached || cache.match('./index.html')
+            )
+          )
+        )
     );
     return;
   }
@@ -74,12 +76,17 @@ self.addEventListener('fetch', (event) => {
   // その他の静的ファイル：キャッシュ優先
   event.respondWith(
     cachePromise.then((cache) =>
-      cache.match(request).then((cachedResponse) => {
-        if (cachedResponse) {
-          return cachedResponse;
+      cache.match(request).then((cached) => {
+        if (cached) {
+          return cached;
         }
 
-        return fetch(request);
+        return fetch(request).then((response) => {
+          if (response.ok) {
+            cache.put(request, response.clone());
+          }
+          return response;
+        });
       })
     )
   );
