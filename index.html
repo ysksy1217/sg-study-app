@@ -50,17 +50,28 @@
     input:checked + .slider:before { transform: translateX(24px); }
     .term-item { display: flex; align-items: center; justify-content: space-between; padding: 12px; border-bottom: 1px solid var(--border); }
     .term-info { display: flex; flex-direction: column; gap: 4px; max-width: 75%; }
+    
+    /* 章・カテゴリ 階層別アコーディオン用スタイル */
+    .chapter-group { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 12px; overflow: hidden; background: #fff; }
+    .chapter-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; cursor: pointer; list-style: none; background: #e2e8f0; font-weight: bold; color: #1e293b; }
+    .chapter-summary::-webkit-details-marker { display: none; }
+    .chapter-summary::after { content: "▲"; font-size: 0.8rem; margin-left: 4px; color: var(--primary); transition: transform 0.2s; }
+    .chapter-group[open] > .chapter-summary::after { transform: rotate(180deg); }
+    
     .category-group { border-bottom: 1px solid var(--border); }
-    .category-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 15px 16px; cursor: pointer; list-style: none; background: #f8fafc; font-weight: bold; }
+    .category-group:last-child { border-bottom: none; }
+    .category-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; cursor: pointer; list-style: none; background: #f8fafc; font-weight: bold; font-size: 0.95rem; }
     .category-summary::-webkit-details-marker { display: none; }
     .category-summary::after { content: "＋"; color: var(--primary); font-size: 1.1rem; margin-left: 4px; }
     .category-group[open] > .category-summary::after { content: "－"; }
+    
     .category-title { flex: 1; min-width: 0; overflow-wrap: anywhere; }
     .category-count { color: var(--text-sub); font-size: 0.8rem; font-weight: normal; white-space: nowrap; }
     .category-terms { padding-left: 8px; }
     .category-terms .term-item:last-child { border-bottom: none; }
     .progress-bar { width: 100%; height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; margin-bottom: 8px; }
     .progress-fill { height: 100%; background: var(--primary); width: 0%; transition: width 0.3s; }
+    .select-box { width: 100%; padding: 12px; font-size: 1rem; border-radius: 8px; border: 1px solid var(--border); background-color: #fff; margin-top: 8px; font-weight: bold; }
   </style>
 </head>
 <body>
@@ -86,6 +97,13 @@
 
     <!-- 2. 出題数選択画面 -->
     <div id="screen-count" class="screen">
+      <div class="card">
+        <h3>出題対象の章を選択</h3>
+        <select id="chapter-select" class="select-box" onchange="app.updateCountScreen()">
+          <option value="all">全章から出題</option>
+        </select>
+      </div>
+
       <div class="card">
         <h3>出題数を選択してください</h3>
         <p style="font-size: 0.85rem; color: var(--text-sub); margin-top: 4px;">出題対象用語数: <span id="active-term-count">0</span>件</p>
@@ -152,10 +170,10 @@
     <div id="screen-terms" class="screen">
       <div class="card">
         <h3>用語・出題ON/OFF管理</h3>
-        <p style="font-size: 0.85rem; color: var(--text-sub);">個別の用語の出題対象を設定できます。</p>
+        <p style="font-size: 0.85rem; color: var(--text-sub);">章・カテゴリ別に個別の用語の出題対象を設定できます。</p>
       </div>
-      <div id="terms-list-container" class="card" style="padding: 0; max-height: 60vh; overflow-y: auto;">
-        <!-- 用語リスト -->
+      <div id="terms-list-container" style="max-height: 60vh; overflow-y: auto; width: 100%;">
+        <!-- 章＞カテゴリ 用語リスト -->
       </div>
     </div>
 
@@ -163,17 +181,18 @@
     <div id="screen-import" class="screen">
       <div class="card">
         <h3>教材JSONの選択</h3>
-        <p style="font-size: 0.85rem; color: var(--text-sub); margin-bottom: 12px;">端末から教材データ(JSON)を選択します。</p>
+        <p style="font-size: 0.85rem; color: var(--text-sub); margin-bottom: 12px;">端末から追加・改修したい章の教材データ(JSON)を選択します。</p>
         <input type="file" id="import-file-input" accept=".json" style="width: 100%;">
       </div>
 
       <div id="import-preview" class="card" style="display: none;">
         <h4>インポート内容の確認</h4>
         <p style="margin-top: 8px;"><strong>教材名:</strong> <span id="prev-name"></span></p>
+        <p><strong>対象章:</strong> <span id="prev-chapter"></span></p>
         <p><strong>試験:</strong> <span id="prev-exam"></span></p>
         <p><strong>用語数:</strong> <span id="prev-terms"></span></p>
         <p><strong>問題数:</strong> <span id="prev-questions"></span></p>
-        <button class="btn" style="margin-top: 12px;" onclick="app.confirmImport()">インポートを実行</button>
+        <button id="import-confirm-btn" class="btn" style="margin-top: 12px;" onclick="app.confirmImport()">インポートを実行</button>
       </div>
     </div>
 
@@ -181,7 +200,7 @@
     <div id="screen-backup" class="screen">
       <div class="card">
         <h3>エクスポート（バックアップ）</h3>
-        <p style="font-size: 0.85rem; color: var(--text-sub); margin-bottom: 12px;">教材データと学習履歴・出題設定をひとつのJSONファイルとして出力します。</p>
+        <p style="font-size: 0.85rem; color: var(--text-sub); margin-bottom: 12px;">全章の教材データと学習履歴・出題設定をひとつのJSONファイルとして出力します。</p>
         <button class="btn" onclick="app.exportBackup()">バックアップJSONをダウンロード</button>
       </div>
 
@@ -211,6 +230,28 @@
       return arr;
     }
 
+    // --- Helper to normalize term chapter info ---
+    function normalizeTermChapterInfo(term) {
+      if (!term.chapter_id) term.chapter_id = 'ch01_04';
+      if (!term.chapter_name) term.chapter_name = '第1〜4章（既存）';
+      return term;
+    }
+
+    // --- Dynamic Chapters Builder Helper ---
+    function buildChaptersSummary(terms) {
+      const chapterMap = new Map();
+      terms.forEach(t => {
+        normalizeTermChapterInfo(t);
+        const cId = t.chapter_id;
+        const cName = t.chapter_name;
+        if (!chapterMap.has(cId)) {
+          chapterMap.set(cId, { chapter_id: cId, chapter_name: cName, term_count: 0 });
+        }
+        chapterMap.get(cId).term_count++;
+      });
+      return Array.from(chapterMap.values());
+    }
+
     // --- IndexedDB Manager ---
     class DBManager {
       constructor() {
@@ -232,7 +273,6 @@
         });
       }
 
-      // トランザクション完了を保証する共通ヘルパー（同期例外発生時に確実にabortを実行）
       runTransaction(storeNames, mode, action) {
         return new Promise((resolve, reject) => {
           const tx = this.db.transaction(storeNames, mode);
@@ -245,23 +285,23 @@
           } catch (err) {
             try {
               tx.abort();
-            } catch (abortErr) {
-              // すでに完了・失敗している場合は無視
-            }
+            } catch (abortErr) {}
             reject(err);
           }
         });
       }
 
-      async saveImportDatasetAndStates(dataset, newTermStates) {
+      async saveAdditiveImportDatasetAndStates(mergedDataset, newTermStates, removedTermIds) {
         return this.runTransaction(['dataset', 'termState'], 'readwrite', (tx) => {
           const dsStore = tx.objectStore('dataset');
           const tsStore = tx.objectStore('termState');
           
-          dsStore.put({ id: 'current', data: dataset });
+          dsStore.put({ id: 'current', data: mergedDataset });
           
-          // 古い用語IDも含めてストアをクリアし、新しく構成されたnewTermStatesのみを保存
-          tsStore.clear();
+          if (Array.isArray(removedTermIds)) {
+            removedTermIds.forEach(id => tsStore.delete(id));
+          }
+          
           for (const term_id in newTermStates) {
             tsStore.put({ term_id, active: newTermStates[term_id] });
           }
@@ -278,7 +318,14 @@
         return new Promise((resolve, reject) => {
           const tx = this.db.transaction(['dataset'], 'readonly');
           const req = tx.objectStore('dataset').get('current');
-          req.onsuccess = () => resolve(req.result ? req.result.data : null);
+          req.onsuccess = () => {
+            const res = req.result ? req.result.data : null;
+            if (res && Array.isArray(res.terms)) {
+              res.terms.forEach(t => normalizeTermChapterInfo(t));
+              res.chapters = buildChaptersSummary(res.terms);
+            }
+            resolve(res);
+          };
           req.onerror = () => reject(req.error);
         });
       }
@@ -337,7 +384,7 @@
           if (Array.isArray(historyArray)) {
             for (const h of historyArray) {
               const item = { ...h };
-              delete item.id; // autoIncrement用にid削除
+              delete item.id;
               hStore.add(item);
             }
           }
@@ -355,7 +402,9 @@
         this.quizList = [];
         this.quizIndex = 0;
         this.quizResults = [];
-        this.isAdvancing = false; // 次へボタンの連続操作を防止
+        this.isAdvancing = false;
+        this.isImporting = false;
+        this.importFileSessionId = 0;
       }
 
       async init() {
@@ -369,7 +418,6 @@
         }
         this.updateHomeUI();
 
-        // ServiceWorker Registration
         if ('serviceWorker' in navigator) {
           navigator.serviceWorker.register('./service-worker.js').catch(err => console.warn('SW reg failed', err));
         }
@@ -382,7 +430,7 @@
         document.getElementById(screenId).classList.add('active');
         document.getElementById('back-btn').style.display = screenId === 'screen-home' ? 'none' : 'block';
 
-        if (screenId === 'screen-count') this.updateCountScreen();
+        if (screenId === 'screen-count') this.setupCountScreen();
         if (screenId === 'screen-terms') this.renderTermsScreen();
       }
 
@@ -394,13 +442,13 @@
       updateHomeUI() {
         const startBtn = document.getElementById('start-btn');
 
-        if (this.dataset) {
-          setText('ds-title', this.dataset.dataset_name || '無題の教材');
+        if (this.dataset && Array.isArray(this.dataset.terms)) {
+          setText('ds-title', this.dataset.dataset_name || '情報セキュリティマネジメント 教材');
           const activeCount = this.dataset.terms.filter(t =>
             this.termStates[t.id] !== false &&
             Array.isArray(t.questions) && t.questions.length > 0
           ).length;
-          setText('ds-info', `試験: ${this.dataset.exam || '-'} | 用語数: ${this.dataset.terms.length} (出題可能: ${activeCount})`);
+          setText('ds-info', `全用語数: ${this.dataset.terms.length} (出題可能: ${activeCount})`);
           startBtn.disabled = activeCount === 0;
         } else {
           setText('ds-title', '教材データ未登録');
@@ -409,9 +457,42 @@
         }
       }
 
+      setupCountScreen() {
+        if (!this.dataset || !Array.isArray(this.dataset.terms)) return;
+
+        const select = document.getElementById('chapter-select');
+        const currentVal = select.value || 'all';
+        select.innerHTML = '<option value="all">全章から出題</option>';
+
+        const chaptersMap = new Map();
+        this.dataset.terms.forEach(t => {
+          normalizeTermChapterInfo(t);
+          if (!chaptersMap.has(t.chapter_id)) {
+            chaptersMap.set(t.chapter_id, t.chapter_name);
+          }
+        });
+
+        chaptersMap.forEach((name, id) => {
+          const opt = document.createElement('option');
+          opt.value = id;
+          opt.textContent = name;
+          select.appendChild(opt);
+        });
+
+        select.value = chaptersMap.has(currentVal) || currentVal === 'all' ? currentVal : 'all';
+        this.updateCountScreen();
+      }
+
       updateCountScreen() {
-        if (!this.dataset) return;
-        const activeTerms = this.dataset.terms.filter(t => this.termStates[t.id] !== false && t.questions && t.questions.length > 0);
+        if (!this.dataset || !Array.isArray(this.dataset.terms)) return;
+        const selectedChap = document.getElementById('chapter-select').value;
+
+        const activeTerms = this.dataset.terms.filter(t => {
+          normalizeTermChapterInfo(t);
+          const chapMatch = selectedChap === 'all' || t.chapter_id === selectedChap;
+          return chapMatch && this.termStates[t.id] !== false && Array.isArray(t.questions) && t.questions.length > 0;
+        });
+
         const count = activeTerms.length;
         setText('active-term-count', String(count));
 
@@ -427,22 +508,69 @@
 
       // --- JSON Import & Validation ---
       handleFileSelect(e) {
+        // インポート保存中は別ファイルの選択処理を受け付けず、ファイル入力欄もリセット
+        if (this.isImporting) {
+          e.target.value = '';
+          return;
+        }
+
+        this.pendingDataset = null;
+        document.getElementById('import-preview').style.display = 'none';
+
+        // ファイル選択ごとに識別番号（セッションID）を更新
+        const currentSessionId = ++this.importFileSessionId;
+
         const file = e.target.files[0];
         if (!file) return;
 
         const reader = new FileReader();
         reader.onload = (evt) => {
+          // 古い読み込み処理が完了した場合は破棄して無視
+          if (currentSessionId !== this.importFileSessionId) return;
+
           try {
             const data = JSON.parse(evt.target.result);
-            const validation = this.validateDataset(data);
+            
+            const validation = this.validateImportDataset(data);
             if (!validation.valid) {
-              alert(`不正な教材データ構造です:
-${validation.reason}`);
-              document.getElementById('import-file-input').value = '';
+              if (currentSessionId === this.importFileSessionId) {
+                alert(`インポートが拒否されました:\n${validation.reason}`);
+                document.getElementById('import-file-input').value = '';
+              }
               return;
             }
+
+            const chapId = data.chapter_id.trim();
+            const chapName = data.chapter_name.trim();
+            data.chapter_id = chapId;
+            data.chapter_name = chapName;
+
+            if (this.dataset && Array.isArray(this.dataset.terms)) {
+              for (const newTerm of data.terms) {
+                const existing = this.dataset.terms.find(t => t.id === newTerm.id);
+                if (existing) {
+                  normalizeTermChapterInfo(existing);
+                  if (existing.chapter_id !== chapId) {
+                    if (currentSessionId === this.importFileSessionId) {
+                      alert(`インポートを中止しました。\n用語ID "${newTerm.id}" は別章 ("${existing.chapter_name}") で既に使用されています。\n新規章の用語IDは重複しない一意のIDを設定してください。`);
+                      document.getElementById('import-file-input').value = '';
+                    }
+                    return;
+                  }
+                }
+              }
+            }
+
+            data.terms.forEach(t => {
+              t.chapter_id = chapId;
+              t.chapter_name = chapName;
+            });
+
+            if (currentSessionId !== this.importFileSessionId) return;
+
             this.pendingDataset = data;
             setText('prev-name', data.dataset_name);
+            setText('prev-chapter', chapName);
             setText('prev-exam', data.exam || '-');
             setText('prev-terms', String(data.terms.length));
             
@@ -452,23 +580,45 @@ ${validation.reason}`);
 
             document.getElementById('import-preview').style.display = 'block';
           } catch (err) {
-            alert('JSONファイルの読み込みまたはパースに失敗しました。');
-            document.getElementById('import-file-input').value = '';
+            if (currentSessionId === this.importFileSessionId) {
+              alert('JSONファイルの読み込みまたはパースに失敗しました。');
+              document.getElementById('import-file-input').value = '';
+            }
           }
         };
         reader.readAsText(file);
       }
 
-      validateDataset(data) {
+      validateImportDataset(data) {
         if (!data || typeof data !== 'object') return { valid: false, reason: 'オブジェクトではありません。' };
         if (typeof data.schema_version !== 'string' && typeof data.schema_version !== 'number') return { valid: false, reason: 'schema_version が不正です。' };
         if (!data.dataset_id || typeof data.dataset_id !== 'string') return { valid: false, reason: 'dataset_id が不正です。' };
         if (!data.dataset_name || typeof data.dataset_name !== 'string') return { valid: false, reason: 'dataset_name が不正です。' };
-        if (!Array.isArray(data.terms)) return { valid: false, reason: 'terms 配列が存在しません。' };
+        
+        if (!data.chapter_id || typeof data.chapter_id !== 'string' || !data.chapter_id.trim()) {
+          return { valid: false, reason: 'chapter_id（章ID）が指定されていないか不正です。新規章の教材JSONには chapter_id が必須です。' };
+        }
+        
+        const cleanChapId = data.chapter_id.trim();
+        if (cleanChapId === 'ch01_04') {
+          return { valid: false, reason: '章ID "ch01_04" は既存の第1〜4章専用の予約IDです。新規教材JSONの追加・置換には使用できません。' };
+        }
 
+        if (!data.chapter_name || typeof data.chapter_name !== 'string' || !data.chapter_name.trim()) {
+          return { valid: false, reason: 'chapter_name（章名）が指定されていないか不正です。新規章の教材JSONには chapter_name が必須です。' };
+        }
+
+        if (!Array.isArray(data.terms) || data.terms.length === 0) {
+          return { valid: false, reason: 'terms 配列が存在しないか、空です。用語データが含まれる教材JSONを選択してください。' };
+        }
+
+        return this.validateTermsStructure(data.terms);
+      }
+
+      validateTermsStructure(terms) {
         const termIds = new Set();
-        for (let i = 0; i < data.terms.length; i++) {
-          const t = data.terms[i];
+        for (let i = 0; i < terms.length; i++) {
+          const t = terms[i];
           if (!t || typeof t !== 'object') return { valid: false, reason: `terms[${i}] がオブジェクトではありません。` };
           if (!t.id || typeof t.id !== 'string') return { valid: false, reason: `terms[${i}] の id が不正です。` };
           if (termIds.has(t.id)) return { valid: false, reason: `用語ID "${t.id}" が重複しています。` };
@@ -501,47 +651,94 @@ ${validation.reason}`);
       }
 
       async confirmImport() {
-        if (!this.pendingDataset) return;
-        
-        // 現在の教材に存在する用語IDのみ抽出し、新教材の用語状態マップを構築（古い用語IDを排除）
-        const newStates = {};
-        this.pendingDataset.terms.forEach(t => {
-          if (this.termStates[t.id] !== undefined) {
-            newStates[t.id] = this.termStates[t.id]; // 既存用語の状態維持
-          } else {
-            newStates[t.id] = true; // 新規用語はON
-          }
-        });
+        if (!this.pendingDataset || this.isImporting) return;
+        this.isImporting = true;
 
+        const confirmBtn = document.getElementById('import-confirm-btn');
+        if (confirmBtn) confirmBtn.disabled = true;
+        
         try {
-          await this.db.saveImportDatasetAndStates(this.pendingDataset, newStates);
-          this.dataset = this.pendingDataset;
+          const targetChapId = this.pendingDataset.chapter_id;
+          const targetChapName = this.pendingDataset.chapter_name;
+
+          let existingTerms = [];
+          if (this.dataset && Array.isArray(this.dataset.terms)) {
+            existingTerms = this.dataset.terms.map(t => normalizeTermChapterInfo(t));
+          }
+
+          const isExistingChap = existingTerms.some(t => t.chapter_id === targetChapId);
+          if (isExistingChap) {
+            if (!confirm(`「${targetChapName}」は既に登録されています。\n対象の章のデータのみを更新（置換）しますか？\n※他の章および既存の学習状態は保護されます。`)) {
+              return;
+            }
+          }
+
+          const oldTargetChapTerms = existingTerms.filter(t => t.chapter_id === targetChapId);
+          const oldTargetChapIds = new Set(oldTargetChapTerms.map(t => t.id));
+          const newTargetChapIds = new Set(this.pendingDataset.terms.map(t => t.id));
+
+          const removedTermIds = [...oldTargetChapIds].filter(id => !newTargetChapIds.has(id));
+
+          const otherTerms = existingTerms.filter(t => t.chapter_id !== targetChapId);
+          const mergedTerms = [...otherTerms, ...this.pendingDataset.terms];
+
+          const baseMetadata = this.dataset ? { ...this.dataset } : {};
+          delete baseMetadata.terms;
+          delete baseMetadata.chapters;
+
+          const mergedDataset = {
+            ...baseMetadata,
+            schema_version: baseMetadata.schema_version || "1.0",
+            dataset_id: baseMetadata.dataset_id || "sg-merged-dataset",
+            dataset_name: baseMetadata.dataset_name || "情報セキュリティマネジメント 統合教材",
+            exam: baseMetadata.exam || "SG",
+            chapters: buildChaptersSummary(mergedTerms),
+            terms: mergedTerms
+          };
+
+          const newStates = { ...this.termStates };
+          this.pendingDataset.terms.forEach(t => {
+            if (newStates[t.id] === undefined) {
+              newStates[t.id] = true;
+            }
+          });
+
+          removedTermIds.forEach(id => delete newStates[id]);
+
+          await this.db.saveAdditiveImportDatasetAndStates(mergedDataset, newStates, removedTermIds);
+          this.dataset = mergedDataset;
           this.termStates = newStates;
           this.pendingDataset = null;
 
-          alert('教材インポートが完了しました。');
+          alert('追加インポートが完了しました。');
           document.getElementById('import-preview').style.display = 'none';
           document.getElementById('import-file-input').value = '';
           this.goHome();
         } catch (err) {
           console.error('Import failed:', err);
           alert('インポート保存処理に失敗しました。既存データは保持されています。');
+        } finally {
+          this.isImporting = false;
+          if (confirmBtn) confirmBtn.disabled = false;
         }
       }
 
       // --- Quiz Engine ---
       startQuiz(countArg) {
-        const activeTerms = this.dataset.terms.filter(t => this.termStates[t.id] !== false && t.questions && t.questions.length > 0);
+        const selectedChap = document.getElementById('chapter-select').value;
+        const activeTerms = this.dataset.terms.filter(t => {
+          normalizeTermChapterInfo(t);
+          const chapMatch = selectedChap === 'all' || t.chapter_id === selectedChap;
+          return chapMatch && this.termStates[t.id] !== false && t.questions && t.questions.length > 0;
+        });
+
         let targetCount = countArg === 'all' ? activeTerms.length : parseInt(countArg, 10);
         targetCount = Math.min(targetCount, activeTerms.length);
 
-        // Fisher-Yates アルゴリズムで出題用語をシャッフル
         const shuffledTerms = shuffleArray(activeTerms).slice(0, targetCount);
 
         this.quizList = shuffledTerms.map(term => {
-          // 用語内の問題から1問をランダム選択
           const q = term.questions[Math.floor(Math.random() * term.questions.length)];
-          // Fisher-Yates アルゴリズムで選択肢をシャッフル
           const shuffledChoices = shuffleArray(q.choices);
           return {
             term: term,
@@ -567,7 +764,6 @@ ${validation.reason}`);
         catEl.textContent = item.term.category || '全般';
         catEl.className = `badge badge-${(item.term.priority || 'C').toLowerCase()}`;
 
-        // 解答前は用語名を隠し、問題文だけを表示する
         setText('quiz-term', '');
         document.getElementById('quiz-term').style.display = 'none';
         setText('quiz-prompt', item.question.prompt);
@@ -616,7 +812,6 @@ ${validation.reason}`);
 
         const correctObj = item.choices.find(c => c.id === item.question.correct_choice_id);
         
-        // 解答後に初めて対象用語名を表示する
         setText('quiz-term', item.term.term);
         document.getElementById('quiz-term').style.display = 'block';
 
@@ -626,7 +821,7 @@ ${validation.reason}`);
         setText('result-explanation', item.question.explanation || '解説なし');
 
         const toggle = document.getElementById('next-quiz-toggle');
-        toggle.checked = this.termStates[item.term.id] !== false; // 初期状態ON。現在の設定も引き継ぐ
+        toggle.checked = this.termStates[item.term.id] !== false;
 
         document.getElementById('quiz-result-area').style.display = 'block';
 
@@ -639,7 +834,6 @@ ${validation.reason}`);
       }
 
       async nextQuestion() {
-        // 連続タップによる問題のスキップや二重処理を防止
         if (this.isAdvancing) return;
         this.isAdvancing = true;
         const nextButton = document.querySelector('#quiz-result-area button');
@@ -649,8 +843,6 @@ ${validation.reason}`);
           const lastResult = this.quizResults[this.quizResults.length - 1];
           if (!lastResult) return;
 
-          // 正誤に関係なく、スイッチの状態をそのまま保存する
-          // 正解しても自動OFFにはせず、ユーザーが手動で管理する
           this.termStates[lastResult.term_id] = lastResult.toggleElement.checked;
 
           try {
@@ -717,97 +909,138 @@ ${validation.reason}`);
 
         if (!this.dataset || !Array.isArray(this.dataset.terms) || this.dataset.terms.length === 0) {
           const div = document.createElement('div');
+          div.className = 'card';
           div.style.padding = '16px';
           div.textContent = 'データが存在しません';
           container.appendChild(div);
           return;
         }
 
-        // JSON内のcategoryを使って自動分類（資格や教材ごとの固定カテゴリにはしない）
-        const grouped = new Map();
+        const chapterGrouped = new Map();
         this.dataset.terms.forEach(term => {
-          const category = (typeof term.category === 'string' && term.category.trim())
-            ? term.category.trim()
-            : '全般';
-          if (!grouped.has(category)) grouped.set(category, []);
-          grouped.get(category).push(term);
+          normalizeTermChapterInfo(term);
+          const chapId = term.chapter_id;
+          if (!chapterGrouped.has(chapId)) {
+            chapterGrouped.set(chapId, { chapter_name: term.chapter_name, terms: [] });
+          }
+          chapterGrouped.get(chapId).terms.push(term);
         });
 
-        grouped.forEach((terms, category) => {
-          const details = document.createElement('details');
-          details.className = 'category-group';
+        chapterGrouped.forEach((groupObj, chapId) => {
+          const chapTerms = groupObj.terms;
+          const chapName = groupObj.chapter_name;
 
-          const summary = document.createElement('summary');
-          summary.className = 'category-summary';
+          const chapDetails = document.createElement('details');
+          chapDetails.className = 'chapter-group';
+          chapDetails.open = true;
 
-          const title = document.createElement('span');
-          title.className = 'category-title';
-          title.textContent = category;
+          const chapSummary = document.createElement('summary');
+          chapSummary.className = 'chapter-summary';
 
-          const count = document.createElement('span');
-          count.className = 'category-count';
+          const chapTitle = document.createElement('span');
+          chapTitle.style.flex = '1';
+          chapTitle.textContent = chapName;
 
-          const activeCount = terms.filter(term => this.termStates[term.id] !== false).length;
-          count.textContent = `${terms.length}件中 ${activeCount}件 ON`;
-          count.dataset.categoryCount = 'true';
+          const chapCount = document.createElement('span');
+          chapCount.className = 'category-count';
+          const chapActiveCount = chapTerms.filter(t => this.termStates[t.id] !== false).length;
+          chapCount.textContent = `${chapTerms.length}件中 ${chapActiveCount}件 ON`;
 
-          summary.appendChild(title);
-          summary.appendChild(count);
-          details.appendChild(summary);
+          chapSummary.appendChild(chapTitle);
+          chapSummary.appendChild(chapCount);
+          chapDetails.appendChild(chapSummary);
 
-          const list = document.createElement('div');
-          list.className = 'category-terms';
-
-          terms.forEach(term => {
-            const item = document.createElement('div');
-            item.className = 'term-item';
-
-            const infoDiv = document.createElement('div');
-            infoDiv.className = 'term-info';
-
-            const strong = document.createElement('strong');
-            strong.textContent = term.term;
-            infoDiv.appendChild(strong);
-
-            const label = document.createElement('label');
-            label.className = 'switch';
-
-            const input = document.createElement('input');
-            input.type = 'checkbox';
-            input.checked = this.termStates[term.id] !== false;
-            input.setAttribute('aria-label', `${term.term}の出題設定`);
-
-            const slider = document.createElement('span');
-            slider.className = 'slider';
-
-            label.appendChild(input);
-            label.appendChild(slider);
-            item.appendChild(infoDiv);
-            item.appendChild(label);
-            list.appendChild(item);
-
-            input.addEventListener('change', async (e) => {
-              const previousValue = this.termStates[term.id] !== false;
-              this.termStates[term.id] = e.target.checked;
-
-              const currentActiveCount = terms.filter(t => this.termStates[t.id] !== false).length;
-              count.textContent = `${terms.length}件中 ${currentActiveCount}件 ON`;
-
-              try {
-                await this.db.setTermStates(this.termStates);
-              } catch (err) {
-                console.error('Failed to update state:', err);
-                this.termStates[term.id] = previousValue;
-                e.target.checked = previousValue;
-                const restoredCount = terms.filter(t => this.termStates[t.id] !== false).length;
-                count.textContent = `${terms.length}件中 ${restoredCount}件 ON`;
-                alert('状態の保存に失敗しました。');
-              }
-            });
+          const catGrouped = new Map();
+          chapTerms.forEach(t => {
+            const cat = (typeof t.category === 'string' && t.category.trim()) ? t.category.trim() : '全般';
+            if (!catGrouped.has(cat)) catGrouped.set(cat, []);
+            catGrouped.get(cat).push(t);
           });
 
-          details.appendChild(list);
-          container.appendChild(details);
+          catGrouped.forEach((catTerms, category) => {
+            const catDetails = document.createElement('details');
+            catDetails.className = 'category-group';
+
+            const catSummary = document.createElement('summary');
+            catSummary.className = 'category-summary';
+
+            const catTitle = document.createElement('span');
+            catTitle.className = 'category-title';
+            catTitle.textContent = category;
+
+            const catCount = document.createElement('span');
+            catCount.className = 'category-count';
+            const catActiveCount = catTerms.filter(t => this.termStates[t.id] !== false).length;
+            catCount.textContent = `${catTerms.length}件中 ${catActiveCount}件 ON`;
+
+            catSummary.appendChild(catTitle);
+            catSummary.appendChild(catCount);
+            catDetails.appendChild(catSummary);
+
+            const list = document.createElement('div');
+            list.className = 'category-terms';
+
+            catTerms.forEach(term => {
+              const item = document.createElement('div');
+              item.className = 'term-item';
+
+              const infoDiv = document.createElement('div');
+              infoDiv.className = 'term-info';
+
+              const strong = document.createElement('strong');
+              strong.textContent = term.term;
+              infoDiv.appendChild(strong);
+
+              const label = document.createElement('label');
+              label.className = 'switch';
+
+              const input = document.createElement('input');
+              input.type = 'checkbox';
+              input.checked = this.termStates[term.id] !== false;
+              input.setAttribute('aria-label', `${term.term}の出題設定`);
+
+              const slider = document.createElement('span');
+              slider.className = 'slider';
+
+              label.appendChild(input);
+              label.appendChild(slider);
+              item.appendChild(infoDiv);
+              item.appendChild(label);
+              list.appendChild(item);
+
+              input.addEventListener('change', async (e) => {
+                const previousValue = this.termStates[term.id] !== false;
+                this.termStates[term.id] = e.target.checked;
+
+                const newCatActive = catTerms.filter(t => this.termStates[t.id] !== false).length;
+                catCount.textContent = `${catTerms.length}件中 ${newCatActive}件 ON`;
+
+                const newChapActive = chapTerms.filter(t => this.termStates[t.id] !== false).length;
+                chapCount.textContent = `${chapTerms.length}件中 ${newChapActive}件 ON`;
+
+                try {
+                  await this.db.setTermStates(this.termStates);
+                } catch (err) {
+                  console.error('Failed to update state:', err);
+                  this.termStates[term.id] = previousValue;
+                  e.target.checked = previousValue;
+                  
+                  const restCatActive = catTerms.filter(t => this.termStates[t.id] !== false).length;
+                  catCount.textContent = `${catTerms.length}件中 ${restCatActive}件 ON`;
+
+                  const restChapActive = chapTerms.filter(t => this.termStates[t.id] !== false).length;
+                  chapCount.textContent = `${chapTerms.length}件中 ${restChapActive}件 ON`;
+
+                  alert('状態の保存に失敗しました。');
+                }
+              });
+            });
+
+            catDetails.appendChild(list);
+            chapDetails.appendChild(catDetails);
+          });
+
+          container.appendChild(chapDetails);
         });
       }
 
@@ -853,15 +1086,20 @@ ${validation.reason}`);
               return;
             }
             
-            // 教材データの厳格な構造検証
-            const validation = this.validateDataset(data.dataset);
-            if (!validation.valid) {
-              alert(`バックアップ内の教材データが不正です:
-${validation.reason}`);
+            if (!data.dataset || !Array.isArray(data.dataset.terms)) {
+              alert('バックアップ内の教材データ構造が不正です。');
               return;
             }
 
-            // termStates の形式・値・用語IDを検証
+            const validation = this.validateTermsStructure(data.dataset.terms);
+            if (!validation.valid) {
+              alert(`バックアップ内の用語データが不正です:\n${validation.reason}`);
+              return;
+            }
+
+            data.dataset.terms.forEach(t => normalizeTermChapterInfo(t));
+            data.dataset.chapters = buildChaptersSummary(data.dataset.terms);
+
             if (
               typeof data.termStates !== 'object' ||
               data.termStates === null ||
@@ -882,7 +1120,6 @@ ${validation.reason}`);
               }
             }
 
-            // history 配列および各履歴レコードの構造・数値範囲を検証
             if (!Array.isArray(data.history)) {
               alert('バックアップ内の学習履歴(history)が配列ではありません。');
               return;
@@ -900,7 +1137,7 @@ ${validation.reason}`);
                 !Number.isInteger(h.rate) || h.rate < 0 || h.rate > 100 ||
                 h.rate !== Math.round((h.correct / h.total) * 100)
               ) {
-                alert(`学習履歴[${i}] の日付・問題数・正解数・正答率が不正です。`);
+                alert(`学習履歴[${i}] の日付・問題数・正答数・正答率が不正です。`);
                 return;
               }
             }
@@ -909,7 +1146,6 @@ ${validation.reason}`);
               return;
             }
 
-            // アトミックなDB一括復元（失敗時はロールバック）
             await this.db.restoreAllData(data.dataset, data.termStates, data.history);
             
             this.dataset = data.dataset;
