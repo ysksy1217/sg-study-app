@@ -786,13 +786,13 @@
         const total = this.quizList.length;
         const savedResult = this.quizResults[this.quizIndex];
 
-        setText('quiz-counter', \`問題 ${this.quizIndex + 1} / ${total}\`);
-        document.getElementById('quiz-progress').style.width = \`${(this.quizIndex / total) * 100}%\`;
+        setText('quiz-counter', `問題 ${this.quizIndex + 1} / ${total}`);
+        document.getElementById('quiz-progress').style.width = `${(this.quizIndex / total) * 100}%`;
         document.getElementById('previous-question-btn').style.display = this.quizIndex > 0 ? 'block' : 'none';
 
         const catEl = document.getElementById('quiz-category');
         catEl.textContent = item.term.category || '全般';
-        catEl.className = \`badge badge-${(item.term.priority || 'C').toLowerCase()}\`;
+        catEl.className = `badge badge-${(item.term.priority || 'C').toLowerCase()}`;
 
         setText('quiz-term', savedResult ? item.term.term : '');
         document.getElementById('quiz-term').style.display = savedResult ? 'block' : 'none';
@@ -806,7 +806,7 @@
           btn.className = 'choice-btn';
           const strong = document.createElement('strong');
           strong.style.minWidth = '20px';
-          strong.textContent = \`${labels[idx]}.\`;
+          strong.textContent = `${labels[idx]}.`;
           const span = document.createElement('span');
           span.textContent = choice.text;
           btn.appendChild(strong);
@@ -903,7 +903,7 @@
         const wrongItems = answeredResults.filter(r => !r.isCorrect);
         const rate = Math.round((correctCount / total) * 100) || 0;
 
-        setText('result-score', \`${rate}%\`);
+        setText('result-score', `${rate}%`);
         setText('result-correct', String(correctCount));
         setText('result-total', String(total));
 
@@ -918,7 +918,7 @@
           const uniqueWrongTerms = new Map(wrongItems.map(w => [w.term_id, w]));
           uniqueWrongTerms.forEach(w => {
             const div = document.createElement('div');
-            div.textContent = \`• ${w.term_name}\`;
+            div.textContent = `• ${w.term_name}`;
             wrongListEl.appendChild(div);
           });
         }
