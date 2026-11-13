@@ -485,7 +485,7 @@
             sum + (Array.isArray(term.questions) ? term.questions.length : 0), 0);
           const opt = document.createElement('option');
           opt.value = id;
-          opt.textContent = \`${chapter.name}（${questionCount}問収録）\`;
+          opt.textContent = `${chapter.name}（${questionCount}問収録）`;
           select.appendChild(opt);
         });
 
