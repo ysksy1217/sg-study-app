@@ -107,16 +107,19 @@
       <div class="card">
         <h3>出題数を選択してください</h3>
         <p style="font-size: 0.85rem; color: var(--text-sub); margin-top: 4px;">出題対象用語数: <span id="active-term-count">0</span>件</p>
+        <p style="font-size: 0.85rem; color: var(--text-sub); margin-top: 4px;">収録問題数: <strong id="chapter-question-count">0</strong>問</p>
+        <p style="font-size: 0.8rem; color: var(--text-sub); margin-top: 4px;">※10・20・50問は用語単位で1問ずつ、全問は収録問題をすべて出題します。</p>
       </div>
       <button class="btn btn-count" data-count="10" onclick="app.startQuiz(10)">10問</button>
       <button class="btn btn-count" data-count="20" onclick="app.startQuiz(20)">20問</button>
       <button class="btn btn-count" data-count="50" onclick="app.startQuiz(50)">50問</button>
-      <button class="btn btn-count" data-count="all" onclick="app.startQuiz('all')">全問</button>
+      <button class="btn btn-count" data-count="all" onclick="app.startQuiz('all')">全問（<span id="all-question-count">0</span>問）</button>
       <button class="btn btn-outline" onclick="app.goHome()">キャンセル</button>
     </div>
 
     <!-- 3. 4択問題・解答・解説画面 -->
     <div id="screen-quiz" class="screen">
+      <button id="previous-question-btn" class="btn btn-outline" style="margin-bottom: 10px; display: none;" onclick="app.previousQuestion()">← 1問戻る</button>
       <div class="progress-bar"><div id="quiz-progress" class="progress-fill"></div></div>
       <div style="display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--text-sub);">
         <span id="quiz-counter">問題 1 / 10</span>
@@ -144,7 +147,10 @@
             <span class="slider"></span>
           </label>
         </div>
-        <button class="btn" style="margin-top: 12px;" onclick="app.nextQuestion()">次へ進む</button>
+        <div style="display: flex; gap: 8px; margin-top: 12px;">
+          <button id="result-previous-btn" class="btn btn-outline" style="flex: 1;" onclick="app.previousQuestion()">← 前の問題</button>
+          <button class="btn" style="flex: 2; margin-top: 0;" onclick="app.nextQuestion()">次へ進む</button>
+        </div>
       </div>
     </div>
 
@@ -402,6 +408,7 @@
         this.quizList = [];
         this.quizIndex = 0;
         this.quizResults = [];
+        this.quizTermStateDraft = {};
         this.isAdvancing = false;
         this.isImporting = false;
         this.importFileSessionId = 0;
@@ -468,14 +475,17 @@
         this.dataset.terms.forEach(t => {
           normalizeTermChapterInfo(t);
           if (!chaptersMap.has(t.chapter_id)) {
-            chaptersMap.set(t.chapter_id, t.chapter_name);
+            chaptersMap.set(t.chapter_id, { name: t.chapter_name, terms: [] });
           }
+          chaptersMap.get(t.chapter_id).terms.push(t);
         });
 
-        chaptersMap.forEach((name, id) => {
+        chaptersMap.forEach((chapter, id) => {
+          const questionCount = chapter.terms.reduce((sum, term) =>
+            sum + (Array.isArray(term.questions) ? term.questions.length : 0), 0);
           const opt = document.createElement('option');
           opt.value = id;
-          opt.textContent = name;
+          opt.textContent = \`${chapter.name}（${questionCount}問収録）\`;
           select.appendChild(opt);
         });
 
@@ -486,22 +496,27 @@
       updateCountScreen() {
         if (!this.dataset || !Array.isArray(this.dataset.terms)) return;
         const selectedChap = document.getElementById('chapter-select').value;
-
-        const activeTerms = this.dataset.terms.filter(t => {
+        const chapterTerms = this.dataset.terms.filter(t => {
           normalizeTermChapterInfo(t);
-          const chapMatch = selectedChap === 'all' || t.chapter_id === selectedChap;
-          return chapMatch && this.termStates[t.id] !== false && Array.isArray(t.questions) && t.questions.length > 0;
+          return selectedChap === 'all' || t.chapter_id === selectedChap;
         });
+        const activeTerms = chapterTerms.filter(t =>
+          this.termStates[t.id] !== false && Array.isArray(t.questions) && t.questions.length > 0
+        );
+        const totalQuestions = chapterTerms.reduce((sum, term) =>
+          sum + (Array.isArray(term.questions) ? term.questions.length : 0), 0);
+        const activeQuestions = activeTerms.reduce((sum, term) => sum + term.questions.length, 0);
 
-        const count = activeTerms.length;
-        setText('active-term-count', String(count));
+        setText('active-term-count', String(activeTerms.length));
+        setText('chapter-question-count', String(totalQuestions));
+        setText('all-question-count', String(activeQuestions));
 
         document.querySelectorAll('.btn-count').forEach(btn => {
           const val = btn.getAttribute('data-count');
           if (val === 'all') {
-            btn.disabled = count === 0;
+            btn.disabled = activeQuestions === 0;
           } else {
-            btn.disabled = parseInt(val, 10) > count || count === 0;
+            btn.disabled = parseInt(val, 10) > activeTerms.length || activeTerms.length === 0;
           }
         });
       }
@@ -729,122 +744,140 @@
         const activeTerms = this.dataset.terms.filter(t => {
           normalizeTermChapterInfo(t);
           const chapMatch = selectedChap === 'all' || t.chapter_id === selectedChap;
-          return chapMatch && this.termStates[t.id] !== false && t.questions && t.questions.length > 0;
+          return chapMatch && this.termStates[t.id] !== false &&
+            Array.isArray(t.questions) && t.questions.length > 0;
         });
 
-        let targetCount = countArg === 'all' ? activeTerms.length : parseInt(countArg, 10);
-        targetCount = Math.min(targetCount, activeTerms.length);
+        if (activeTerms.length === 0) {
+          alert('出題対象の用語がありません。');
+          return;
+        }
 
-        const shuffledTerms = shuffleArray(activeTerms).slice(0, targetCount);
+        let quizItems = [];
+        if (countArg === 'all') {
+          // 全問は、対象用語に登録された全問題を1問ずつ出題対象にする。
+          activeTerms.forEach(term => {
+            term.questions.forEach(question => {
+              quizItems.push({ term, question, choices: shuffleArray(question.choices) });
+            });
+          });
+          quizItems = shuffleArray(quizItems);
+        } else {
+          // 10・20・50問は従来どおり用語単位で1用語につき1問を抽出する。
+          const targetCount = Math.min(parseInt(countArg, 10), activeTerms.length);
+          const shuffledTerms = shuffleArray(activeTerms).slice(0, targetCount);
+          quizItems = shuffledTerms.map(term => {
+            const question = term.questions[Math.floor(Math.random() * term.questions.length)];
+            return { term, question, choices: shuffleArray(question.choices) };
+          });
+        }
 
-        this.quizList = shuffledTerms.map(term => {
-          const q = term.questions[Math.floor(Math.random() * term.questions.length)];
-          const shuffledChoices = shuffleArray(q.choices);
-          return {
-            term: term,
-            question: q,
-            choices: shuffledChoices
-          };
-        });
-
+        this.quizList = quizItems;
         this.quizIndex = 0;
-        this.quizResults = [];
+        this.quizResults = new Array(quizItems.length);
+        this.quizTermStateDraft = { ...this.termStates };
         this.showScreen('screen-quiz');
         this.renderQuestion();
       }
 
       renderQuestion() {
         const item = this.quizList[this.quizIndex];
+        if (!item) return;
         const total = this.quizList.length;
+        const savedResult = this.quizResults[this.quizIndex];
 
-        setText('quiz-counter', `問題 ${this.quizIndex + 1} / ${total}`);
-        document.getElementById('quiz-progress').style.width = `${((this.quizIndex) / total) * 100}%`;
-        
+        setText('quiz-counter', \`問題 ${this.quizIndex + 1} / ${total}\`);
+        document.getElementById('quiz-progress').style.width = \`${(this.quizIndex / total) * 100}%\`;
+        document.getElementById('previous-question-btn').style.display = this.quizIndex > 0 ? 'block' : 'none';
+
         const catEl = document.getElementById('quiz-category');
         catEl.textContent = item.term.category || '全般';
-        catEl.className = `badge badge-${(item.term.priority || 'C').toLowerCase()}`;
+        catEl.className = \`badge badge-${(item.term.priority || 'C').toLowerCase()}\`;
 
-        setText('quiz-term', '');
-        document.getElementById('quiz-term').style.display = 'none';
+        setText('quiz-term', savedResult ? item.term.term : '');
+        document.getElementById('quiz-term').style.display = savedResult ? 'block' : 'none';
         setText('quiz-prompt', item.question.prompt);
 
         const choicesArea = document.getElementById('quiz-choices');
         choicesArea.innerHTML = '';
-
-        document.getElementById('quiz-result-area').style.display = 'none';
-
         const labels = ['A', 'B', 'C', 'D'];
         item.choices.forEach((choice, idx) => {
           const btn = document.createElement('button');
           btn.className = 'choice-btn';
-          
           const strong = document.createElement('strong');
           strong.style.minWidth = '20px';
-          strong.textContent = `${labels[idx]}.`;
-          
+          strong.textContent = \`${labels[idx]}.\`;
           const span = document.createElement('span');
           span.textContent = choice.text;
-
           btn.appendChild(strong);
           btn.appendChild(span);
 
-          btn.onclick = () => this.answerQuestion(choice.id);
+          if (savedResult) {
+            btn.disabled = true;
+            if (choice.id === item.question.correct_choice_id) {
+              btn.classList.add('selected-correct');
+            } else if (choice.id === savedResult.selectedId && !savedResult.isCorrect) {
+              btn.classList.add('selected-wrong');
+            }
+          } else {
+            btn.onclick = () => this.answerQuestion(choice.id);
+          }
           choicesArea.appendChild(btn);
         });
+
+        const resultArea = document.getElementById('quiz-result-area');
+        resultArea.style.display = savedResult ? 'block' : 'none';
+        if (savedResult) {
+          const correctObj = item.choices.find(c => c.id === item.question.correct_choice_id);
+          setText('result-judge', savedResult.isCorrect ? '正解！' : '不正解…');
+          document.getElementById('result-judge').style.color = savedResult.isCorrect ? 'var(--success)' : 'var(--danger)';
+          setText('result-correct-text', correctObj ? correctObj.text : '');
+          setText('result-explanation', item.question.explanation || '解説なし');
+          document.getElementById('next-quiz-toggle').checked = this.quizTermStateDraft[item.term.id] !== false;
+        }
+        document.getElementById('result-previous-btn').style.display = this.quizIndex > 0 ? 'block' : 'none';
       }
 
       answerQuestion(selectedId) {
         const item = this.quizList[this.quizIndex];
+        if (this.quizResults[this.quizIndex]) return;
         const isCorrect = selectedId === item.question.correct_choice_id;
-        
-        const choicesArea = document.getElementById('quiz-choices');
-        const btns = choicesArea.querySelectorAll('.choice-btn');
 
-        btns.forEach((btn, idx) => {
-          btn.onclick = null;
-          const c = item.choices[idx];
-          if (c.id === item.question.correct_choice_id) {
-            btn.classList.add('selected-correct');
-          } else if (c.id === selectedId && !isCorrect) {
-            btn.classList.add('selected-wrong');
-          }
-        });
-
-        const correctObj = item.choices.find(c => c.id === item.question.correct_choice_id);
-        
-        setText('quiz-term', item.term.term);
-        document.getElementById('quiz-term').style.display = 'block';
-
-        setText('result-judge', isCorrect ? '正解！' : '不正解…');
-        document.getElementById('result-judge').style.color = isCorrect ? 'var(--success)' : 'var(--danger)';
-        setText('result-correct-text', correctObj ? correctObj.text : '');
-        setText('result-explanation', item.question.explanation || '解説なし');
-
-        const toggle = document.getElementById('next-quiz-toggle');
-        toggle.checked = this.termStates[item.term.id] !== false;
-
-        document.getElementById('quiz-result-area').style.display = 'block';
-
-        this.quizResults.push({
+        this.quizResults[this.quizIndex] = {
           term_id: item.term.id,
           term_name: item.term.term,
-          isCorrect: isCorrect,
-          toggleElement: toggle
-        });
+          selectedId,
+          isCorrect,
+          keepForNext: this.quizTermStateDraft[item.term.id] !== false
+        };
+        this.renderQuestion();
+      }
+
+      previousQuestion() {
+        if (this.quizIndex <= 0 || this.isAdvancing) return;
+        const currentResult = this.quizResults[this.quizIndex];
+        if (currentResult) {
+          currentResult.keepForNext = document.getElementById('next-quiz-toggle').checked;
+          const currentItem = this.quizList[this.quizIndex];
+          this.quizTermStateDraft[currentItem.term.id] = currentResult.keepForNext;
+        }
+        this.quizIndex--;
+        this.renderQuestion();
       }
 
       async nextQuestion() {
         if (this.isAdvancing) return;
+        const currentResult = this.quizResults[this.quizIndex];
+        if (!currentResult) return;
         this.isAdvancing = true;
-        const nextButton = document.querySelector('#quiz-result-area button');
+        const nextButton = document.querySelector('#quiz-result-area button:not(#result-previous-btn)');
         if (nextButton) nextButton.disabled = true;
 
         try {
-          const lastResult = this.quizResults[this.quizResults.length - 1];
-          if (!lastResult) return;
-
-          this.termStates[lastResult.term_id] = lastResult.toggleElement.checked;
-
+          currentResult.keepForNext = document.getElementById('next-quiz-toggle').checked;
+          const currentItem = this.quizList[this.quizIndex];
+          this.quizTermStateDraft[currentItem.term.id] = currentResult.keepForNext;
+          this.termStates[currentResult.term_id] = currentResult.keepForNext;
           try {
             await this.db.setTermStates(this.termStates);
           } catch (err) {
@@ -864,12 +897,13 @@
       }
 
       async finishQuiz() {
-        const total = this.quizResults.length;
-        const correctCount = this.quizResults.filter(r => r.isCorrect).length;
-        const wrongItems = this.quizResults.filter(r => !r.isCorrect);
+        const total = this.quizList.length;
+        const answeredResults = this.quizResults.filter(Boolean);
+        const correctCount = answeredResults.filter(r => r.isCorrect).length;
+        const wrongItems = answeredResults.filter(r => !r.isCorrect);
         const rate = Math.round((correctCount / total) * 100) || 0;
 
-        setText('result-score', `${rate}%`);
+        setText('result-score', \`${rate}%\`);
         setText('result-correct', String(correctCount));
         setText('result-total', String(total));
 
@@ -881,9 +915,10 @@
           p.textContent = '全問正解です！素晴らしい！';
           wrongListEl.appendChild(p);
         } else {
-          wrongItems.forEach(w => {
+          const uniqueWrongTerms = new Map(wrongItems.map(w => [w.term_id, w]));
+          uniqueWrongTerms.forEach(w => {
             const div = document.createElement('div');
-            div.textContent = `• ${w.term_name}`;
+            div.textContent = \`• ${w.term_name}\`;
             wrongListEl.appendChild(div);
           });
         }
