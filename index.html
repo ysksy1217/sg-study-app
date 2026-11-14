@@ -127,6 +127,7 @@
       </div>
 
       <div class="card">
+        <div id="quiz-question-id" style="display: inline-block; margin-bottom: 10px; padding: 5px 9px; border-radius: 6px; background: #e2e8f0; color: #1e293b; font-size: 0.85rem; font-weight: 700;">問題番号：第1章 Q001</div>
         <h3 id="quiz-term" style="color: var(--primary); margin-bottom: 8px; display: none;"></h3>
         <p id="quiz-prompt" style="font-size: 1rem; line-height: 1.5; white-space: pre-wrap;"></p>
       </div>
@@ -787,6 +788,12 @@
         const savedResult = this.quizResults[this.quizIndex];
 
         setText('quiz-counter', `問題 ${this.quizIndex + 1} / ${total}`);
+        const rawQuestionId = String(item.question.id || item.term.id || '');
+        const questionIdMatch = rawQuestionId.match(/^(\d+)Q0*(\d+)$/i);
+        const visibleQuestionId = questionIdMatch
+          ? `問題番号：第${questionIdMatch[1]}章 Q${String(Number(questionIdMatch[2])).padStart(3, '0')}`
+          : `問題番号：${rawQuestionId || '未設定'}`;
+        setText('quiz-question-id', visibleQuestionId);
         document.getElementById('quiz-progress').style.width = `${(this.quizIndex / total) * 100}%`;
         document.getElementById('previous-question-btn').style.display = this.quizIndex > 0 ? 'block' : 'none';
 
